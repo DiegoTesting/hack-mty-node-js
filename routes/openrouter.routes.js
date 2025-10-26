@@ -20,7 +20,6 @@ const ClienteService = require('../services/cliente.service');
 const cliente_service = new ClienteService();
 
 
-
 router.post("/",validacionJWT, async (req, res) => {
   const { message } = req.body;
   // Obtenemos la ultima conversacio

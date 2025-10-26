@@ -12,22 +12,32 @@ const app = express();
 const cors = require('cors');
 
 // CONFIGURAR CORS
-const whileList = ['http://localhost:3000', 'https://myapp.co', 'http://localhost:4200', `https://${process.env.REMOTE_HOST}`,'exp://192.168.43.72:8081', 'http://192.168.43.72:8081', 'http://localhost:8081', 'http://192.168.43.185:8081', '*'];
+const whitelist = [
+  'http://localhost:3000',
+  'https://myapp.co',
+  'http://localhost:4200',
+  `https://${process.env.REMOTE_HOST}`,
+  'exp://192.168.43.72:8081',
+  'http://192.168.43.72:8081',
+  'http://localhost:8081',
+  'http://192.168.43.185:8081'
+];
 
-
-
-// Configurar OPS DE CORS
-const options = {
+const corsOptions = {
   origin: (origin, callback) => {
-    if (whileList.includes(origin) || !origin) {
+    // Permitir si viene de la lista o si no hay origen (Postman, Curl, servidor interno)
+    if (!origin || whitelist.some(url => origin.startsWith(url))) {
       callback(null, true);
     } else {
-      callback(new Error('no permitido'));
+      console.log('❌ Bloqueado por CORS:', origin);
+      callback(new Error('CORS no permitido'));
     }
   },
-} 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
 
-app.use(cors(options));
+app.use(cors(corsOptions));
 
 app.use(express.json());
 app.use(morgan('dev'));
