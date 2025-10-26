@@ -282,10 +282,11 @@ Toda respuesta debe ser **JSON válido** y ajustarse exactamente a la estructura
  try {
   // Llamada normal que devuelve la respuesta completa
   const botResponse = await service.getCompletion(message, context); // ya no streamCompletion
+  console.log(botResponse)
   // Guardamos la respuesta en la base de datos
   await models.Mensaje.create({
     remitente: 'assistant',
-    contenido: botResponse.mensaje_usuario,
+    contenido: botResponse.message,
     fecha_envio: Date.now(),
     conversacion_id: id_conversacion
   });
@@ -380,34 +381,37 @@ router.post("/voice-chat", validacionJWT, upload.single("audio"), async (req, re
     const message = await speechToText(req.file.path);
     console.log("Usuario dijo:", message);
 
-    // 2️⃣ Manejo de conversación en DB
-    const last_conversacion = await models.Conversacion.findOne({
-      where: { usuario_id: req.user.sub },
-      order: [['id', 'DESC']]
-    });
 
-    let id_conversacion;
-    let json_conversation;
 
-    if (!last_conversacion || last_conversacion.status === 'done') {
+
+
+    // Obtenemos la ultima conversacio
+const last_conversacion = await models.Conversacion.findOne({
+  where: { usuario_id: req.user.sub },
+  order: [['id', 'DESC']]
+});
+  let id_conversacion;
+  let json_conversation;
+  if (!last_conversacion || last_conversacion.status == 'done'){
       const response = await models.Conversacion.create({
         usuario_id: req.user.sub,
         nombre: "conversacion",
         fecha_creacion: Date.now(),
         status: "process",
-        data: { status: "process" }
+        data: {status: "process"}
       });
-      id_conversacion = response.id;
-      json_conversation = response.data;
-    } else {
-      id_conversacion = last_conversacion.id;
-      json_conversation = last_conversacion.data;
-    }
+      id_conversacion = response.id
+      json_conversation = response.data
+  } else {
+    id_conversacion = last_conversacion.id
+    json_conversation = last_conversacion.data
+  }
 
-   // Registros de usuario
+
+// Registros de usuario
 
 //const cuentas_propias = (await axios.get(`http://api.nessieisreal.com/customers/${req.user.id_cliente}/accounts?key=b9c71161ea6125345750dcb92f0df27c`)).data;
-const cuentas_propias = (await axios.get(`http:/mockdb-production.up.railway.app/customers/${req.user.id_cliente}/accounts`)).data;
+const cuentas_propias = (await axios.get(`http:/mockdb-production.up.railway.app/customers/68fc4df19683f20dd51a3f39/accounts`)).data;
 console.log("Cuentas propias", cuentas_propias)
 const contactos_usuario = await models.Contacto.findAll()
 
@@ -500,115 +504,108 @@ const contactos_usuario = await models.Contacto.findAll()
 
 
 const prompt = `
-  RESPONDE **EXCLUSIVAMENTE** en JSON. No agregues nada más, no expliques nada, no uses comillas triples ni backticks. La única salida debe ser:
+RESPONDE **EXCLUSIVAMENTE** en JSON. No agregues nada más, no expliques nada, no uses comillas triples ni backticks. La única salida debe ser:
 
-  Deberas rellenar en base a todo lo que haya dicho el cliente, cuando tengas los datos listos podras autirizar cambiando a decision listo, si el usuario llegar a terminar la conversacion, lo cambias a cancelado, y si aun no terminas lo cambias a procesando para pedir la informacion restante
-  {
-    "accion": "transferencia | alta_contacto | contratar_producto",
-    "decision": "listo | procesando | cancelado",
-    "tipo_producto": "tarjeta_credito | cuenta_corriente | cuenta_ahorro | prestamo_auto",
-    "detalle": {
-      "nombre_cuenta_saliente": "" // Es el nombre de la cuenta que saldra el dinero del cliente
-      "nombre_contacto_destino": "" // Es a quien se le mandara el dinero en caso de ser contacto 
-      "monto": 0,                 // Solo para transferencias
-      "moneda": "USD",            // Opcional, default USD
-      "numero_de_cuenta": "",         // Numero de cuenta exclusivo
-      "nombre_del_destinatario": "", // Numero de persona a transferir exclusivo
-      "nombre_alta_contacto": "", // Nombre exclusivo para la persona que se da de alta como contacto
-      "contacto_id": null,        // ID interno del contacto si ya existe
-      "producto_nombre": "",       // Nombre del producto (ej: Quicksilver Rewards)
-      "usuario_id": null           // ID del usuario que solicita la acción
-      "tipo_de_producto_a_contratar": "" // Aqui solo tiene 3 estados ['Credit Card', 'Savings', 'Checking']
-      "nombre_del_producto": "" // Se usara nombres de los productos asignados previamente en la data que te pase
-    },
-    "status": "processing | done", // processing si falta info, done si la acción se completó
-    "mensaje_usuario": ""          // Mensaje que verá el usuario
-  }
-
-  Tienes acceso al registro si no es null
-  ${JSON.stringify(json_conversation, null, 2)}
-
-  Informacion de CAPITAL ONE para que no inventes nada:
-  Tarjetas de credito: ${JSON.stringify(tarjetasCredito, null, 2)}
-  Cuentas corrientes: ${JSON.stringify(cuentasCorrientes, null, 2)}
-  Cuentas de ahorro: ${JSON.stringify(cuentasAhorro, null, 2)}
-  Prestamo de autos: ${JSON.stringify(prestamosAuto, null, 2)}
-  Si el cliente trata de contratar un producto, trata de llevarlo a la contratacion lo mas rapido posible, tienes maximo 3 mensajes de respuesta para realizar la contratacion
-
-  Informacion del cliente:
-  Contactos que tiene guardados disponibles para transferir: 
-  ${JSON.stringify(contactos_usuario, null, 2)}
-  Cuentas propias que tiene el usuario (Tambien puede transferirse entre el)
-  ${JSON.stringify(cuentas_propias, null, 2)}
-
-  Requisitos para cada accion:
-  alta_contacto: Solo se necesita nombre_alta_contacto y numero_de_cuenta, una vez proporcionados se realiza la alta
-  transferencia: Necesitamos el nombre_cuenta_saliente, nombre_contacto_destino y monto una vez proporcionados, se dicen los datos como monto, destinatario, si el cliente acepta, se hace la transferencia de decision a listo
-
-  Reglas:
-
-  1. Siempre devuelves JSON válido, sin explicaciones extra.
-  2. message es lo que el usuario verá.
-  3. status indica:
-    - "processing" si necesitas más información del usuario para completar la acción.
-    - "done" si la acción se completó o el usuario indica que quiere terminar la conversación.
-  4. Si detectas que el usuario da por terminada la conversación, cambia status a "done" y el message puede ser un cierre amigable.
-  5. Nunca incluyas instrucciones internas ni texto fuera del JSON.
-  6. Si falta información para completar la acción, solicita solo lo necesario en message y pon status a "processing".
-
-  Ejemplos:
-
-  Usuario: "Quiero transferir $500"  
-  Respuesta esperada:
-  {
-    "message": "¿A quién deseas transferir los $500?",
-    "status": "processing"
-  }
-
-  Usuario: "A Juan"  
-  Respuesta esperada:
-  {
-    "message": "Listo, simulando transferencia de $500 a Juan",
-    "status": "done"
-  }
-
-  Usuario: "No quiero continuar"  
-  Respuesta esperada:
-  {
-    "message": "Entendido, terminamos la conversación.",
-    "status": "done"
-  }
-    No incluyas caracteres especiales que puedan romper el JSON, no estan permitidos caracteres especiales entre las comillas
-Usa **únicamente** la información de productos, cuentas y contactos que te proporcioné arriba. 
-Si el usuario menciona algo que no está en esa información, responde:
+Deberas rellenar en base a todo lo que haya dicho el cliente, cuando tengas los datos listos podras autirizar cambiando a decision listo, si el usuario llegar a terminar la conversacion, lo cambias a cancelado, y si aun no terminas lo cambias a procesando para pedir la informacion restante
 {
-  "message": "No tengo información sobre ese producto o servicio en Capital One.",
+  "accion": "transferencia | alta_contacto | contratar_producto",
+  "decision": "listo | procesando | cancelado",
+  "tipo_producto": "tarjeta_credito | cuenta_corriente | cuenta_ahorro | prestamo_auto",
+  "detalle": {
+    "nombre_cuenta_saliente": "" // Es el nombre de la cuenta que saldra el dinero del cliente
+    "nombre_contacto_destino": "" // Es a quien se le mandara el dinero en caso de ser contacto 
+    "monto": 0,                 // Solo para transferencias
+    "moneda": "USD",            // Opcional, default USD
+    "numero_de_cuenta": "",         // Numero de cuenta exclusivo
+    "nombre_del_destinatario": "", // Numero de persona a transferir exclusivo
+    "nombre_alta_contacto": "", // Nombre exclusivo para la persona que se da de alta como contacto
+    "contacto_id": null,        // ID interno del contacto si ya existe
+    "producto_nombre": "",       // Nombre del producto (ej: Quicksilver Rewards)
+    "usuario_id": null           // ID del usuario que solicita la acción
+    "tipo_de_producto_a_contratar": "" // Aqui solo tiene 3 estados ['Credit Card', 'Savings', 'Checking']
+    "nombre_del_producto": "" // Se usara nombres de los productos asignados previamente en la data que te pase
+  },
+  "status": "processing | done", // processing si falta info, done si la acción se completó
+  "mensaje_usuario": ""          // Mensaje que verá el usuario
+}
+
+Tienes acceso al registro si no es null
+ ${JSON.stringify(json_conversation, null, 2)}
+
+Informacion de CAPITAL ONE para que no inventes nada:
+Tarjetas de credito: ${JSON.stringify(tarjetasCredito, null, 2)}
+Cuentas corrientes: ${JSON.stringify(cuentasCorrientes, null, 2)}
+Cuentas de ahorro: ${JSON.stringify(cuentasAhorro, null, 2)}
+Prestamo de autos: ${JSON.stringify(prestamosAuto, null, 2)}
+Si el cliente trata de contratar un producto, trata de llevarlo a la contratacion lo mas rapido posible, tienes maximo 3 mensajes de respuesta para realizar la contratacion
+
+Informacion del cliente:
+Contactos que tiene guardados disponibles para transferir: 
+${JSON.stringify(contactos_usuario, null, 2)}
+Cuentas propias que tiene el usuario (Tambien puede transferirse entre el)
+${JSON.stringify(cuentas_propias, null, 2)}
+
+Requisitos para cada accion:
+alta_contacto: Solo se necesita nombre_alta_contacto y numero_de_cuenta, una vez proporcionados se realiza la alta
+transferencia: Necesitamos el nombre_cuenta_saliente, nombre_contacto_destino y monto una vez proporcionados, se dicen los datos como monto, destinatario, si el cliente acepta, se hace la transferencia de decision a listo
+
+Reglas:
+
+1. Siempre devuelves JSON válido, sin explicaciones extra.
+2. message es lo que el usuario verá.
+3. status indica:
+   - "processing" si necesitas más información del usuario para completar la acción.
+   - "done" si la acción se completó o el usuario indica que quiere terminar la conversación.
+4. Si detectas que el usuario da por terminada la conversación, cambia status a "done" y el message puede ser un cierre amigable.
+5. Nunca incluyas instrucciones internas ni texto fuera del JSON.
+6. Si falta información para completar la acción, solicita solo lo necesario en message y pon status a "processing".
+
+Ejemplos:
+
+Usuario: "Quiero transferir $500"  
+Respuesta esperada:
+{
+  "message": "¿A quién deseas transferir los $500?",
+  "status": "processing"
+}
+
+Usuario: "A Juan"  
+Respuesta esperada:
+{
+  "message": "Listo, simulando transferencia de $500 a Juan",
   "status": "done"
 }
-  `;
 
-    // Guardar mensaje del usuario en DB
-    await models.Mensaje.create({
-      remitente: 'user',
-      contenido: prompt + message,
-      fecha_envio: Date.now(),
-      conversacion_id: id_conversacion
-    });
+Usuario: "No quiero continuar"  
+Respuesta esperada:
+{
+  "message": "Entendido, terminamos la conversación.",
+  "status": "done"
+}
+  No incluyas caracteres especiales que puedan romper el JSON, no estan permitidos caracteres especiales entre las comillas
 
-    // Cargar contexto
+`;
+  // Guardamos el mensaje del usuario
+  await models.Mensaje.create({
+    remitente: 'user',
+    contenido: prompt + message,
+    fecha_envio: Date.now(),
+    conversacion_id: id_conversacion
+  })
     const mensajes = await models.Mensaje.findAll({
-      where: { conversacion_id: id_conversacion },
-      order: [['fecha_envio', 'ASC']]
-    });
+  where: { conversacion_id: id_conversacion },
+  order: [['fecha_envio', 'ASC']] // orden cronológico
+  });
 
-    const context = mensajes.map(msg => ({
-      role: msg.remitente === 'user' ? 'user' : 'assistant',
-      content: msg.contenido
-    }));
+  const context = mensajes.map(msg => ({
+  role: msg.remitente === 'user' ? 'user' : 'assistant',
+  content: msg.contenido
+  }));
+
 
     context.unshift({
-      role: 'system',
-      content: `
+    role: 'system',
+    content:  `
 Eres un agente oficial de banca de **Capital One**. 
 Tu única función es manejar conversaciones de clientes relacionadas con:
 - Transferencias bancarias
@@ -626,50 +623,79 @@ Tu única función es manejar conversaciones de clientes relacionadas con:
 Toda respuesta debe ser **JSON válido** y ajustarse exactamente a la estructura proporcionada.
 `
     });
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
 
-    // Llamada a OpenRouter
-    const botResponse = await service.getCompletion(message, context);
+/** 
+  try {
+    let botResponse = ""; // acumulador de todo lo que envía el bot
+    for await (const chunk of service.streamCompletion(message)) {
+      botResponse += chunk; // acumulamos el texto parcial
+      res.write(`data: ${chunk}\n\n`);
+    }
+      await models.Mensaje.create({
+    remitente: 'model',
+    contenido: botResponse,
+    fecha_envio: Date.now(),
+    conversacion_id: id_conversacion
+  });
+    res.write("event: done\ndata: [DONE]\n\n");
+  }*/
+  // Llamada normal que devuelve la respuesta completa
+  const botResponse = await service.getCompletion(message, context); // ya no streamCompletion
+  // Guardamos la respuesta en la base de datos
+  await models.Mensaje.create({
+    remitente: 'assistant',
+    contenido: botResponse.mensaje_usuario,
+    fecha_envio: Date.now(),
+    conversacion_id: id_conversacion
+  });
+  if (botResponse.status === "done") {
+    const conversacion = await models.Conversacion.findByPk(id_conversacion);
+    
+    if (conversacion) {
+      await conversacion.update({
+        status: botResponse.status,
+        data: botResponse
+      });
+    }
 
-    // Guardar respuesta del bot
-    await models.Mensaje.create({
-      remitente: 'assistant',
-      contenido: botResponse.mensaje_usuario,
-      fecha_envio: Date.now(),
-      conversacion_id: id_conversacion
-    });
-
-    // Ejecutar acciones si decision === "listo"
-    if (botResponse.status === "done" && botResponse.decision === "listo") {
-      if (botResponse.accion === "alta_contacto") {
+    if (botResponse.decision === "listo"){
+      /**  Se da de alta contacto */
+      if (botResponse.accion === "alta_contacto"){
         //const cuentas = (await axios.get("http://api.nessieisreal.com/accounts?key=b9c71161ea6125345750dcb92f0df27c")).data;
-        const cuentas = (await axios.get("mock_db.railway.internal/accounts")).data
-        for (let i = 0; i < cuentas.length; i++) {
-          if (cuentas[i].account_number == botResponse.detalle.numero_de_cuenta) {
-            await models.Contacto.create({
+        const cuentas = (await axios.get("http:/mockdb-production.up.railway.app/accounts")).data
+        console.log("Se impprimen cuentas en total", cuentas)
+        for (let i = 0; i < cuentas.length; i++){
+          if (cuentas[i].account_number == botResponse.detalle.numero_de_cuenta){
+            models.Contacto.create({
               nombre: botResponse.detalle.nombre_alta_contacto,
               numero_cuenta: botResponse.detalle.numero_de_cuenta,
               cuenta_id: cuentas[i]._id,
               fecha_creacion: Date.now()
-            });
+            })
           }
         }
-      } else if (botResponse.accion === "transferencia") {
-        const cuentas = (await axios.get("http://api.nessieisreal.com/accounts?key=b9c71161ea6125345750dcb92f0df27c")).data;
-        const contactos = await models.Contacto.findAll();
-        for (let i = 0; i < cuentas.length; i++) {
-          if (cuentas[i].nickname == botResponse.detalle.nombre_cuenta_saliente) {
-            for (let j = 0; j < contactos.length; j++) {
-              if (contactos[j].nombre == botResponse.detalle.nombre_contacto_destino) {
-                const payer_id = cuentas[i]._id;
-                const payee_id = contactos[j].cuenta_id;
-                const amount = botResponse.detalle.monto;
-                const descripcion = "Transferencia";
-                await transfer_service.createTransfer(payer_id, { payee_id, amount, descripcion });
+      } else if (botResponse.accion === "transferencia"){
+         //const cuentas = (await axios.get("http://api.nessieisreal.com/accounts?key=b9c71161ea6125345750dcb92f0df27c")).data;
+          const cuentas = (await axios.get("http:/mockdb-production.up.railway.app/accounts")).data
+         const contactos = await models.Contacto.findAll();
+         for (let i = 0; i < cuentas.length; i++){
+          // Encontramos la cuenta del usuario que envia
+            if(cuentas[i].nickname == botResponse.detalle.nombre_cuenta_saliente){
+              for (let j = 0; j < contactos.length; j++){
+                if (contactos[j].nombre == botResponse.detalle.nombre_contacto_destino){
+                    const payer_id = cuentas[i]._id;
+                    const payee_id = contactos[j].cuenta_id
+                    const amount = botResponse.detalle.monto
+                    const descripcion = "Transferencia"
+                    const transferencia = await transfer_service.createTransfer(payer_id, { payee_id, amount , descripcion})
+                }
               }
             }
           }
-        }
-      }else if (botResponse.accion === "contratar_producto"){
+        } else if (botResponse.accion === "contratar_producto"){
           // Aqui nos encargaremos de manejar el producto que se piense adquirir
           const body = {
             "type":  botResponse.detalle.tipo_de_producto_a_contratar,
@@ -678,9 +704,23 @@ Toda respuesta debe ser **JSON válido** y ajustarse exactamente a la estructura
             "balance": 0,
           } 
           cliente_service.create(body, req.user.id_cliente);
-          console.log("Producto contratado")
         }
+      }
+    else {
+      console.log("Cancelado")
     }
+  }
+
+
+
+
+
+
+
+
+
+
+
 
     // 8️⃣ Convertir respuesta a voz y enviar
     const audioStream = await elevenlabs.textToSpeech.convert(
