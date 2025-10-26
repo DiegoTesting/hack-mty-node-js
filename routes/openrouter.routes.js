@@ -163,7 +163,7 @@ Deberas rellenar en base a todo lo que haya dicho el cliente, cuando tengas los 
     "nombre_del_producto": "" // Se usara nombres de los productos asignados previamente en la data que te pase
   },
   "status": "processing | done", // processing si falta info, done si la acción se completó
-  "mensaje_usuario": ""          // Mensaje que verá el usuario
+  "message": ""          // Mensaje que verá el usuario
 }
 
 Tienes acceso al registro si no es null
@@ -354,7 +354,7 @@ Toda respuesta debe ser **JSON válido** y ajustarse exactamente a la estructura
 
 
   // Enviamos la respuesta al cliente
-  res.write(botResponse.mensaje_usuario);
+  res.write(botResponse.message);
   res.end();
 } catch (err) {
     console.error("Error:", err.message);
@@ -526,7 +526,7 @@ Deberas rellenar en base a todo lo que haya dicho el cliente, cuando tengas los 
     "nombre_del_producto": "" // Se usara nombres de los productos asignados previamente en la data que te pase
   },
   "status": "processing | done", // processing si falta info, done si la acción se completó
-  "mensaje_usuario": ""          // Mensaje que verá el usuario
+  "message": ""          // Mensaje que verá el usuario
 }
 
 Tienes acceso al registro si no es null
@@ -647,7 +647,7 @@ Toda respuesta debe ser **JSON válido** y ajustarse exactamente a la estructura
   // Guardamos la respuesta en la base de datos
   await models.Mensaje.create({
     remitente: 'assistant',
-    contenido: botResponse.mensaje_usuario,
+    contenido: botResponse.message,
     fecha_envio: Date.now(),
     conversacion_id: id_conversacion
   });
@@ -725,7 +725,7 @@ Toda respuesta debe ser **JSON válido** y ajustarse exactamente a la estructura
     // 8️⃣ Convertir respuesta a voz y enviar
     const audioStream = await elevenlabs.textToSpeech.convert(
       "V6rHKMlMDJPdxDisHSfZ",
-      { text: botResponse.mensaje_usuario, modelId: "eleven_multilingual_v2", outputFormat: "mp3_44100_128" }
+      { text: botResponse.message, modelId: "eleven_multilingual_v2", outputFormat: "mp3_44100_128" }
     );
 
     const chunks = [];
