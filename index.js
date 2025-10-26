@@ -25,7 +25,6 @@ const whitelist = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Permitir si viene de la lista o si no hay origen (Postman, Curl, servidor interno)
     if (!origin || whitelist.some(url => origin.startsWith(url))) {
       callback(null, true);
     } else {
@@ -34,7 +33,17 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'Origin',
+    'X-Requested-With',
+    'Content-Length',
+    'Content-Disposition',
+    'Range'
+  ],
+  credentials: true
 };
 
 app.use(cors(corsOptions));
