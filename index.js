@@ -20,7 +20,8 @@ const whitelist = [
   'exp://192.168.43.72:8081',
   'http://192.168.43.72:8081',
   'http://localhost:8081',
-  'http://192.168.43.185:8081'
+  'http://192.168.43.185:8081',
+  'http://hackmty-frotend-capitanone.s3-website.us-east-2.amazonaws.com'
 ];
 
 const corsOptions = {
